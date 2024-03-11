@@ -33,3 +33,11 @@ a,
     padding: 0 2rem;
   }
 }
+
+.tooltip-force-block {
+  display: block !important;
+}
+
+.tooltip-force-flex-grow {
+  flex-grow: 1 !important;
+}

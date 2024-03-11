@@ -48,10 +48,10 @@ export default {
 </script>
 
 <template>
-    <a-row style="display: flex; align-items: center;">
-        <a-tag style="border: none; flex: 0 0 auto;">{{ $t('gen.vae') }}</a-tag>
-        <a-select :value="activeVaeName" style="flex: 1 1 auto;" :loading="loading" :options="options"
+    <a-space direction="vertical" style="width:100%;">
+        <a-tag style="border: none;">{{ $t('gen.vae') }}</a-tag>
+        <a-select style="width: 100%;" :value="activeVaeName" :loading="loading" :options="options"
             @change="onVaeChange">
         </a-select>
-    </a-row>
+    </a-space>
 </template>

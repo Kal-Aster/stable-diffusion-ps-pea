@@ -27,6 +27,7 @@ import { DEFAULT_CONFIG, applyStateDiff, appStateToStateDiff, type StateDiff } f
 import { useConfigStore } from '@/stores/configStore';
 import { CloseOutlined } from '@ant-design/icons-vue';
 import { UltimateUpscaleScript } from '@/UltimateUpscale';
+import { MoreOutlined, CaretUpOutlined } from '@ant-design/icons-vue';
 
 const context = useA1111ContextStore().a1111Context;
 const appStateStore = useAppStateStore();
@@ -131,7 +132,7 @@ async function setControlNetInputs(maskBound: PhotopeaBound): Promise<void> {
 }
 
 function fillExtensionsArgs() {
-  if (useA1111ContextStore().controlnetContext.initialized) {
+  if (useA1111ContextStore().controlnetContext.available) {
     appState.commonPayload.alwayson_scripts['ControlNet'] = {
       args: toRaw(appState.controlnetUnits)
         .filter(unit => unit.enabled)
@@ -186,9 +187,19 @@ async function selectRefArea() {
   selectRefAreaInProgress.value = true;
   try {
     await photopeaContext.executeTask(async () => {
-      const maskBound = JSON.parse(await photopeaContext.invoke('getSelectionBound') as string) as PhotopeaBound;
+      let selectionBound = await photopeaContext.invoke('getSelectionBound') as string|null;
+      if (selectionBound == null) {
+        $notify("Please select a region on the canvas");
+        return false;
+      }
+      const maskBound = JSON.parse(selectionBound) as PhotopeaBound;
       resultImageBound.value = maskBound;
-      await photopeaContext.invoke('createRefRangePlaceholder', maskBound,  /* layerName= */"TempMaskLayer");
+      if (await photopeaContext.invoke(
+        'createRefRangePlaceholder', maskBound,  /* layerName= */"TempMaskLayer"
+      ) == "no-selection") {
+        $notify("Please select a region on the canvas");
+        return false;
+      }
       generationState.value = GenerationState.kSelectRefAreaState;
     });
     return true;
@@ -221,7 +232,11 @@ async function preparePayload() {
         await photopeaContext.invoke('removeTopLevelLayer', /* layerName= */"TempMaskLayer");
         bound = resultImageBound.value!;
       } else {
-        bound = JSON.parse(await photopeaContext.invoke('getSelectionBound') as string) as PhotopeaBound;
+        let selectionBound = await photopeaContext.invoke('getSelectionBound') as string|null;
+        if (selectionBound == null) {
+          return [null, null];
+        }
+        bound = JSON.parse(selectionBound) as PhotopeaBound;
         // Note: After expansion, there might be selection on region outside canvas.
         // We should use `image.bound` which is clampped against canvas to for the real
         // selection bound.
@@ -237,6 +252,10 @@ async function preparePayload() {
       ]);
       return [image, mask];
     });
+    if (image == null) {
+      $notify("Please select a region on the canvas")
+      return false;
+    }
 
     await setControlNetInputs(image.bound);
     // Handling extension
@@ -299,13 +318,31 @@ async function sendPayload() {
       .map((image: string) => `data:image/png;base64,${image}`);
 
     const info = JSON.parse(result.info) as IGenerationInfo;
+    const {
+      cfg_scale,
+      clip_skip,
+      height,
+      sampler_name,
+      seed_resize_from_h,
+      seed_resize_from_w,
+      steps,
+      styles,
+      subseed_strength,
+      width
+    } = info;
 
     resultImages.push(
       ..._.zip(
         imageURLs, info.all_prompts, info.all_negative_prompts,
-        info.all_seeds, info.all_subseeds,
+        info.all_seeds, info.all_subseeds
       ).map(([url, prompt, negative_prompt, seed, subseed]) => {
-        return { url, prompt, negative_prompt, seed, subseed } as IGeneratedImage
+        return {
+          url, prompt, negative_prompt,
+          seed, subseed, cfg_scale,
+          clip_skip, height, sampler_name,
+          seed_resize_from_h, seed_resize_from_w, steps,
+          styles, subseed_strength, width
+        } as IGeneratedImage
       })
     );
     generationState.value = GenerationState.kFinishedState;
@@ -414,16 +451,11 @@ const stepProgress = computed(() => {
   }
 });
 
+const nextStepTextVisible = ref<boolean>(true);
+
 </script>
 <template>
   <div>
-    <a-button shape="circle" class="floating-button" type="primary" @click="appStateStore.resetToDefault" size="large"
-      :title="$t('gen.resetToDefault')">
-      <template #icon>
-        <ReloadOutlined></ReloadOutlined>
-      </template>
-    </a-button>
-
     <GenerationProgress v-model:active="generationActive"></GenerationProgress>
 
     <a-space direction="vertical" class="root">
@@ -442,48 +474,11 @@ const stepProgress = computed(() => {
           <PromptInput v-model:payload="appState.commonPayload"></PromptInput>
         </a-form-item>
         <a-form-item>
-          <a-space>
-            <a-progress :class="{ 'generation-step': true, 'blink': hoveredStep !== undefined }"
-              :percent="stepProgress * 33.33" :steps="3" :showInfo="false" />
-            <a-tag class="next-step-tag">
-              {{ $t(`gen.steps.${hoveredStep === undefined ? '' : 'To'}${GenerationState[stepProgress]}`) }}
-            </a-tag>
-          </a-space>
-          <a-button type="danger" :ghost="true" size="small"
-            v-if="generationState > GenerationState.kInitialState && generationState < GenerationState.kFinishedState"
-            @click="resetGenerationState">
-            <CloseOutlined></CloseOutlined>
-          </a-button>
-          <a-row>
-            <a-col :span="12">
-              <a-spin :spinning="selectRefAreaInProgress">
-                <a-button class="ref-area-button"
-                  :disabled="generationState >= GenerationState.kSelectRefAreaState || appState.generationMode === GenerationMode.Txt2Img"
-                  @click="selectRefArea" @mouseover="highlightGenerationStep(GenerationState.kSelectRefAreaState)"
-                  @mouseout="removeGenerationStepHighlight">{{
-                    $t('gen.selectRefArea') }}</a-button>
-              </a-spin>
-            </a-col>
-            <a-col :span="12">
-              <a-spin :spinning="preparePayloadInProgress">
-                <a-button class="prepare-button" :disabled="generationState >= GenerationState.kPayloadPreparedState"
-                  @click="preparePayload" @mouseover="highlightGenerationStep(GenerationState.kPayloadPreparedState)"
-                  @mouseout="removeGenerationStepHighlight">{{
-                    $t('gen.prepare')
-                  }}</a-button>
-              </a-spin>
-            </a-col>
-          </a-row>
-          <a-button class="generate" type="primary" @click="generate"
-            :disabled="generationState >= GenerationState.kFinishedState"
-            @mouseover="highlightGenerationStep(GenerationState.kFinishedState)"
-            @mouseout="removeGenerationStepHighlight">{{ $t('generate') }}</a-button>
-
-          <a-space size="small" style="flex-wrap: wrap; margin-top: 5px;">
-            <a-button v-for="configName in configStore.toolboxConfigNames" @click="generateWithConfig(configName)"
-              type="dashed" :disabled="generationState >= GenerationState.kPayloadPreparedState">{{ configName
-              }}</a-button>
-          </a-space>
+          <div style="text-align: right;">
+            <a-button size="small" @click="appStateStore.resetToDefault" type="dashed">
+                {{ $t('gen.resetToDefault') }}
+            </a-button>
+          </div>
         </a-form-item>
         <GenerationResultPicker :images="resultImages" :bound="resultImageBound" :maskBlur="resultImageMaskBlur"
           :result-destination="appState.imageResultDestination" @result-finalized="onResultImagePicked"
@@ -495,17 +490,14 @@ const stepProgress = computed(() => {
           </SliderGroup>
         </a-form-item>
         <a-form-item v-if="appState.generationMode === GenerationMode.Img2Img">
-          <div v-if="appState.referenceRangeMode === ReferenceRangeMode.kPixel"
-            style="display:flex; align-items: center; width: 100%">
-            <a-button @click="appState.referenceRangeMode = ReferenceRangeMode.kPercent">px</a-button>
-            <SliderGroup :label="$t('gen.referenceRange')" v-model:value="appState.referenceRange[0]" :min="0" :max="256">
-            </SliderGroup>
-          </div>
-          <div v-else style="display:flex; align-items: center; width:100%">
-            <a-button @click="appState.referenceRangeMode = ReferenceRangeMode.kPixel">%</a-button>
-            <SliderGroup :label="$t('gen.referenceRange')" v-model:value="appState.referenceRange[1]" :min="0" :max="100">
-            </SliderGroup>
-          </div>
+          <SliderGroup v-if="appState.referenceRangeMode === ReferenceRangeMode.kPixel"
+            :label="$t('gen.referenceRange')" v-model:value="appState.referenceRange[0]" :min="0" :max="256">
+            <a-button size="small" @click="appState.referenceRangeMode = ReferenceRangeMode.kPercent">px</a-button>
+          </SliderGroup>
+          <SliderGroup v-else
+            :label="$t('gen.referenceRange')" v-model:value="appState.referenceRange[1]" :min="0" :max="100">
+            <a-button size="small" @click="appState.referenceRangeMode = ReferenceRangeMode.kPixel">%</a-button>
+          </SliderGroup>
         </a-form-item>
         <a-form-item>
           <SliderGroup :label="$t('gen.batchCount')" v-model:value="appState.commonPayload.n_iter" :min="1" :max="64"
@@ -523,7 +515,7 @@ const stepProgress = computed(() => {
           </SliderGroup>
         </a-form-item>
         <SliderGroup v-if="appState.generationMode === GenerationMode.Img2Img" :label="$t('gen.denoisingStrength')"
-          v-model:value="appState.img2imgPayload.denoising_strength" :min="0" :max="1" :step="0.05"></SliderGroup>
+          v-model:value="appState.img2imgPayload.denoising_strength" :min="0" :max="1" :step="0.01"></SliderGroup>
         <a-space v-if="appState.generationMode === GenerationMode.Img2Img">
           <div v-if="inputImage">
             <a-tag>{{ $t('inputImage') }}</a-tag>
@@ -541,18 +533,24 @@ const stepProgress = computed(() => {
           <a-collapse-panel :header="$t('gen.advancedSettings')">
             <a-space direction="vertical">
               <VaeSelection></VaeSelection>
-              <a-row style="display: flex; align-items: center;">
-                <a-tag style="border: none; flex: 0 0 auto;">{{ $t('gen.sampler') }}</a-tag>
-                <a-select style="flex: 1 1 auto;" ref="select" v-model:value="appState.commonPayload.sampler_name"
+              <a-space direction="vertical" style="width:100%;">
+                <a-tag style="border: none;">{{ $t('gen.sampler') }}</a-tag>
+                <a-select style="width: 100%;" ref="select" v-model:value="appState.commonPayload.sampler_name"
                   :options="samplerOptions"></a-select>
-              </a-row>
+              </a-space>
               <SliderGroup :label="$t('gen.batchSize')" v-model:value="appState.commonPayload.batch_size" :min="1"
-                :max="8" :log-scale="true">
+                :max="8">
               </SliderGroup>
-              <a-input-number :addonBefore="$t('width')" addonAfter="px" v-model:value="appState.commonPayload.width"
-                :min="64" :max="2048" />
-              <a-input-number :addonBefore="$t('height')" addonAfter="px" v-model:value="appState.commonPayload.height"
-                :min="64" :max="2048" />
+              <a-space direction="vertical" style="width: 100%;">
+                <a-tag style="border: none;">Width</a-tag>
+                <a-input-number style="width: 100%;" addonAfter="px" v-model:value="appState.commonPayload.width"
+                  :min="64" :max="2048" />
+              </a-space>
+              <a-space direction="vertical" style="width: 100%;">
+                <a-tag style="border: none;">Height</a-tag>
+                <a-input-number style="width: 100%;" addonAfter="px" v-model:value="appState.commonPayload.height"
+                  :min="64" :max="2048" />
+              </a-space>
 
               <div :hidden="appState.generationMode !== GenerationMode.Img2Img">
                 <Img2ImgPayloadDisplay :payload="appState.img2imgPayload">
@@ -565,19 +563,143 @@ const stepProgress = computed(() => {
             </a-space>
           </a-collapse-panel>
         </a-collapse>
-        <ControlNet :units="appState.controlnetUnits"></ControlNet>
+        <ControlNet v-if="appState.controlnetUnits.length > 0" :units="appState.controlnetUnits"></ControlNet>
         <UltimateUpscale v-if="ultimateUpscaleAvailable && appState.generationMode == GenerationMode.Img2Img"
           :script="appState.ultimateUpscale"></UltimateUpscale>
       </div>
     </a-space>
+    <div class="generation-controls">
+      <a-space direction="vertical" style="width: 100%;">
+        <div class="generation-controls-first-steps">
+          <a-dropdown placement="topRight">
+            <a-button class="area-selector">
+              <CaretUpOutlined />Area
+            </a-button>
+            <template #overlay>
+              <a-menu>
+                <a-menu-item @click="selectRefArea"
+                  :disabled="generationState >= GenerationState.kPayloadPreparedState || appState.generationMode === GenerationMode.Txt2Img">
+                  <a-tooltip placement="topLeft" :mouseLeaveDelay="0"
+                    :arrowPointAtCenter="true" class="tooltip-force-block"
+                    :title="$t(`gen.steps.TokSelectRefAreaState`)">{{
+                      $t('gen.selectRefArea')
+                    }}
+                  </a-tooltip>
+                </a-menu-item>
+              </a-menu>
+            </template>
+          </a-dropdown>
+          <a-spin :spinning="preparePayloadInProgress">
+            <a-tooltip placement="topLeft" :mouseLeaveDelay="0"
+              class="tooltip-force-block tooltip-force-flex-grow"
+              :title="$t(`gen.steps.TokPayloadPreparedState`)">
+            <a-button class="prepare-button" :disabled="generationState >= GenerationState.kPayloadPreparedState"
+              @click="preparePayload" block style="flex-grow: 1;">{{
+                $t('gen.prepare')
+              }}</a-button>
+            </a-tooltip>
+          </a-spin>
+        </div>
+
+        <div class="generate">
+          <a-dropdown placement="topRight">
+            <a-button class="generate-1stchild">
+              <template #icon>
+                <MoreOutlined />
+              </template>
+            </a-button>
+            <template #overlay>
+              <a-menu  @click="({ key }) => { generateWithConfig(key); }">
+                <a-menu-item :key="configName"
+                  :disabled="generationState >= GenerationState.kPayloadPreparedState"
+                  v-for="configName in configStore.toolboxConfigNames">
+                  {{ configName }}
+                </a-menu-item>
+              </a-menu>
+            </template>
+          </a-dropdown>
+          <a-tooltip placement="topLeft" :mouseLeaveDelay="0"
+            class="tooltip-force-block tooltip-force-flex-grow"
+            :title="$t(`gen.steps.TokFinishedState`)">
+            <a-button type="primary" @click="generate" class="generate-2ndchild"
+              :disabled="generationState >= GenerationState.kFinishedState" block
+              >{{
+              $t('generate')
+            }}</a-button>
+          </a-tooltip>
+          <a-tooltip placement="topLeft" :mouseLeaveDelay="0"
+            :arrowPointAtCenter="true" class="tooltip-force-block"
+            title="Cancel">
+            <a-button type="danger" :ghost="true" class="generate-3rdchild"
+              :disabled="!(generationState > GenerationState.kSelectRefAreaState && generationState < GenerationState.kFinishedState)"
+              @click="resetGenerationState">
+              <template #icon>
+                <CloseOutlined />
+              </template>
+            </a-button>
+          </a-tooltip>
+        </div>
+      </a-space>
+    </div>
   </div>
 </template>
 
 <style scoped>
 .root,
-.generate,
 .generation-step {
   width: 100%;
+}
+
+.generation-controls {
+  background: #000;
+  box-shadow: 0 1rem 0 1rem #000;
+  border-top: 1px solid #434343;
+  position: sticky;
+  bottom: 1rem;
+  margin-top: -1px;
+  z-index: 999;
+  padding-top: 1rem;
+}
+
+.generation-controls-first-steps {
+  display: flex;
+  width: 100%;
+  /* gap: 8px; */
+}
+
+.generation-controls-first-steps > div:nth-child(2) {
+  flex-grow: 1;
+}
+
+.generation-controls-first-steps .area-selector {
+  padding-left: 8px;
+  border-top-right-radius: 0;
+  border-bottom-right-radius: 0;
+  border-right: 0;
+}
+
+.generate {
+  width: 100%;
+  display: flex;
+}
+
+.generate-1stchild {
+  flex-grow: 0;
+  flex-shrink: 0;
+  border-top-right-radius: 0;
+  border-bottom-right-radius: 0;
+}
+.generate-2ndchild {
+  flex-grow: 1;
+  border-radius: 0;
+  border-left: none;
+  border-right: none;
+}
+.generate-3rdchild {
+  flex-grow: 0;
+  flex-shrink: 0;
+  border-top-left-radius: 0;
+  border-bottom-left-radius: 0;
 }
 
 .prepare-button,
@@ -615,5 +737,17 @@ const stepProgress = computed(() => {
   right: 20px;
   z-index: 100;
   /* optional: to ensure button remains on top */
+}
+
+.next-step-text-container {
+  position: absolute;
+  bottom: 100%;
+  right: 0;
+  width: 100px;
+  margin-bottom: 1rem;
+  padding: 0.2rem;
+  background: black;
+  border: 1px solid #434343;
+  border-radius: 5px;
 }
 </style>

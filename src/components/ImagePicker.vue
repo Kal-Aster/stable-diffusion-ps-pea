@@ -34,9 +34,10 @@ export default {
 
 <template>
     <div class="image-grid">
-        <div :class="{ 'grid-item': true, 'selected': $props.selectedImages!.includes(item.name) }"
+        <div :class="{ 'grid-item': true }"
             v-for="(item, index) in $props.images" :key="index" @click="onItemClicked(item)">
-            <a-image :src="item.imageURL" fallback="image_alt.png" :preview="false" />
+            <div :class="{ 'image-preview': true, 'selected': $props.selectedImages!.includes(item.name) }"
+                :style="`background-image: url(${item.imageURL});`"></div>
             <div class="actions" :hidden="!displayNames">
                 <span class="name">{{ item.name }}</span>
             </div>
@@ -77,11 +78,14 @@ export default {
     box-shadow: rgb(238, 238, 238) 0px 0px 0px 1px;
 }
 
-.grid-item img {
+.grid-item .image-preview {
+    background: url(image_alt.png) no-repeat center/contain;
+    /* Firefox */
+    image-rendering: crisp-edges;
+    /* Chromium + Safari */
+    image-rendering: pixelated;
+    inset: 0;
     position: absolute;
-    object-fit: cover;
-    width: 100%;
-    height: 100%;
 }
 
 .actions {

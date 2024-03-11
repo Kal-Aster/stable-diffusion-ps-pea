@@ -36,7 +36,7 @@ export default {
 </script>
 
 <template>
-    <a-space direction="vertical" size="small">
+    <a-space direction="vertical" size="middle">
         <PayloadRadio :label="$t('gen.resizeMode')" v-model:value="payload.resize_mode" :enum-type="ResizeMode">
         </PayloadRadio>
         <PayloadRadio :label="$t('gen.inpaintArea')" v-model:value="payload.inpaint_full_res" :enum-type="InpaintArea">
@@ -45,9 +45,13 @@ export default {
         </PayloadRadio>
         <PayloadRadio :label="$t('gen.maskMode')" v-model:value="payload.inpainting_mask_invert" :enum-type="MaskMode">
         </PayloadRadio>
-        <a-input-number addonBefore="Only masked padding" addonAfter="px" v-model:value="payload.inpaint_full_res_padding"
-            :min="0" />
-        <a-input-number addonBefore="Mask blur" addonAfter="px" :value="payload.mask_blur_x" :min="0"
-            @change="updateMaskBlur" />
+        <a-space direction="vertical">
+            <a-tag style="border: none;">Only masked padding</a-tag>
+            <a-input-number addonAfter="px" v-model:value="payload.inpaint_full_res_padding" :min="0" />
+        </a-space>
+        <a-space direction="vertical">
+            <a-tag style="border: none;">Mask blur</a-tag>
+            <a-input-number addonAfter="px" :value="payload.mask_blur_x" :min="0" @change="updateMaskBlur" />
+        </a-space>
     </a-space>
 </template>

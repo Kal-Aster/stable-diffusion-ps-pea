@@ -169,23 +169,26 @@ export default {
                     @keydown.tab.stop="handleTabPress" :autoSize="{ minRows: 1, maxRows: 6 }" />
             </a-auto-complete>
         </a-spin>
-        <a-space>
-            <ExtraNetworks :loras="loras" :embeddings="embeddings" @add:prompt="addPrompt"></ExtraNetworks>
-            <Tagger @update:prompt="newPrompt => $props.payload.prompt = newPrompt"
-                @append:prompt="newPrompt => $props.payload.prompt += newPrompt"></Tagger>
-            <SegColorPicker></SegColorPicker>
+        <a-collapse :bordered="false">
+          <a-collapse-panel header="Negative prompt">
+            <a-textarea v-model:value="payload.negative_prompt" :placeholder="$t('gen.enterNegativePrompt') + '...'"
+                :autoSize="{ minRows: 1 }" />
+            </a-collapse-panel>
+        </a-collapse>
+        <a-row>
+            <a-col flex="auto">
+                <a-space>
+                    <ExtraNetworks :loras="loras" :embeddings="embeddings" @add:prompt="addPrompt"></ExtraNetworks>
+                    <Tagger @update:prompt="newPrompt => $props.payload.prompt = newPrompt"
+                        @append:prompt="newPrompt => $props.payload.prompt += newPrompt"></Tagger>
+                    <SegColorPicker></SegColorPicker>
+                </a-space>
+            </a-col>
 
-            <a-button :danger="true" type="primary" @click="negativePromptVisible = true" :title="$t('gen.negativePrompt')">
-                <MinusOutlined />
-            </a-button>
-            <a-drawer v-model:visible="negativePromptVisible" :title="$t('gen.negativePrompt')" placement="right">
-                <a-textarea v-model:value="payload.negative_prompt" :placeholder="$t('gen.enterNegativePrompt') + '...'"
-                    :autoSize="{ minRows: 1 }" />
-            </a-drawer>
             <a-button @click="clearPrompt" :danger="true" type="primary" :title="$t('gen.clearPrompt')">
                 <DeleteOutlined></DeleteOutlined>
             </a-button>
-        </a-space>
+        </a-row>
     </a-space>
 </template>
 

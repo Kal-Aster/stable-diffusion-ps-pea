@@ -577,6 +577,16 @@ interface IGeneratedImage {
     negative_prompt: string;
     seed: number;
     subseed: number;
+    subseed_strength: number;
+    cfg_scale: number;
+    clip_skip: number;
+    height: number;
+    sampler_name: string;
+    seed_resize_from_h: number;
+    seed_resize_from_w: number;
+    steps: number;
+    styles: any[];
+    width: number;
 };
 
 export {

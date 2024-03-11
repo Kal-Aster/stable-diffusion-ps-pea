@@ -102,9 +102,6 @@ class PhotopeaContext {
             error = e;
         } finally {
             console.debug(`sdp: Done task #${taskId}`);
-            // The task is done, execute the next task
-            this.executeNextTask();
-
             // Resolve the Promise for this task
             if (this.taskCallbacks[taskId]) {
                 const { resolve, reject } = this.taskCallbacks[taskId];
@@ -117,6 +114,9 @@ class PhotopeaContext {
                 }
                 delete this.taskCallbacks[taskId];
             }
+
+            // The task is done, execute the next task
+            this.executeNextTask();
         }
     }
 
@@ -201,6 +201,7 @@ class PhotopeaContext {
                         return;
                     }
                     console.debug(`sdp: New layer not fully added. Continue waiting.`);
+                    invokeInProgress = false;
                 } catch (e) {
                     clearInterval(waitTranslate);
                     reject(e);

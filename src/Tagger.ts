@@ -11,7 +11,12 @@ class TaggerContext {
     public async initialize(baseURL: string) {
         this.taggerURL = `${baseURL}/tagger/v1`;
         const data = await fetchJSON(`${this.taggerURL}/interrogators`);
-        this.interrogators = data.models;
+
+        if ((data ?? { detail: "Not Found" })["detail"] == "Not Found") {
+            this.interrogators = [];
+        } else {
+            this.interrogators = data.models;
+        }
 
         this.initialized = true;
     }

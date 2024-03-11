@@ -59,6 +59,22 @@ export default {
         const photopeaInProgress = ref<boolean>(false);
         async function switchResultImage(imageItem: ImageItem) {
             if (photopeaInProgress.value) return;
+
+            let imageIndex = selectedResultImages.indexOf(imageItem);
+            if (imageIndex >= 0 && ctrlPressed.value) {
+                selectedResultImages.splice(imageIndex, 1);
+                photopeaInProgress.value = true;
+                await photopeaContext.executeTask(async () => {
+                    await deselectResultImage();
+                    let selResLength = selectedResultImages.length
+                    if (selResLength == 0) {
+                        return;
+                    }
+                    await selectResultImage(selectedResultImages[selResLength - 1]);
+                });
+                photopeaInProgress.value = false;
+                return;
+            }
             photopeaInProgress.value = true;
             await photopeaContext.executeTask(async () => {
                 await deselectResultImage();

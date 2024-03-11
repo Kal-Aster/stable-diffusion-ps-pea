@@ -85,10 +85,12 @@ function removeConnection(conn: ConnectionItem) {
 
 <template>
   <div>
-    <a-space>
-      <a-input :addonBefore="$t('con.newConnection')" v-model:value="a1111URL">
-      </a-input>
-      <a-button @click="initializeContext(a1111URL)">{{ $t('con.connect') }}</a-button>
+    <a-space direction="vertical">
+      <div>{{ $t('con.newConnection') }}</div>
+      <a-space>
+        <a-input v-model:value="a1111URL"></a-input>
+        <a-button @click="initializeContext(a1111URL)">{{ $t('con.connect') }}</a-button>
+      </a-space>
     </a-space>
     <div v-if="connectionHistory.length">
       <a-list item-layout="horizontal" :data-source="connectionHistory">

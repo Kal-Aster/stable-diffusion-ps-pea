@@ -117,7 +117,7 @@ export default {
     </a-button>
 
     <a-drawer v-model:visible="visible" title="Tagger" placement="right">
-        <a-space direction="vertical" style="width: 100%;">
+        <a-space direction="vertical" style="width: 100%;" v-if="interrogatorOptions.length > 0">
             <a-select v-model:value="interrogator" :options="interrogatorOptions" style="width: 100%;">
             </a-select>
             <SliderGroup v-model:value="threshold" :min="0" :max="1" :label="$t('threshold')" :step="0.01"></SliderGroup>
@@ -143,6 +143,7 @@ export default {
                 <a-tag v-for="[tag, weight] in sortedTags">{{ tag }}: {{ weight.toFixed(2) }}</a-tag>
             </div>
         </a-space>
+        <a-empty description="No interrogators found"></a-empty>
     </a-drawer>
 </template>
 

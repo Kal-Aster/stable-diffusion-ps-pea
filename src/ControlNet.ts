@@ -89,15 +89,31 @@ class ControlNetContext {
     detectURL: string = '';
 
     initialized: boolean = false;
+    available: boolean = false;
 
     public async initialize(baseURL: string) {
         const controlNetURL = `${baseURL}/controlnet`;
         this.detectURL = `${controlNetURL}/detect`;
 
+        const version = await fetchJSON(`${controlNetURL}/version`);
+        if (
+            (version ?? { detail: "Not Found"})["detail"] == "Not Found"
+        ) {
+            this.version = -1;
+            this.models = [];
+            this.modules = [];
+            this.module_details = {};
+            this.control_types = {};
+            this.initialized = true;
+            this.available = false;
+            return;
+        }
+        
+        this.version = version['version'] as number;
+
         const fetchPromises = [
             fetchJSON(`${controlNetURL}/model_list`),
             fetchJSON(`${controlNetURL}/module_list`),
-            fetchJSON(`${controlNetURL}/version`),
             fetchJSON(`${controlNetURL}/settings`),
             fetchJSON(`${controlNetURL}/control_types`),
         ];
@@ -106,7 +122,6 @@ class ControlNetContext {
         const [
             models,
             modules,
-            version,
             setting,
             control_types,
         ] = await Promise.all(fetchPromises);
@@ -114,7 +129,6 @@ class ControlNetContext {
         this.models = models['model_list'] as string[];
         this.modules = modules['module_list'] as string[];
         this.module_details = modules['module_detail'] as Record<string, ModuleDetail>;
-        this.version = version['version'] as number;
         this.setting = setting as ControlNetSetting;
         this.control_types = control_types['control_types'] as Record<string, ControlType>;
 
@@ -133,6 +147,7 @@ class ControlNetContext {
         this.validateModules();
         this.validateControlTypes();
         this.initialized = true;
+        this.available = true;
     }
 
     private validateModules() {

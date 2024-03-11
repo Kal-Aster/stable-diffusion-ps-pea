@@ -85,22 +85,31 @@ function hasActiveLayer() {
     return false;
 }
 
+function getTotalNumberOfLayers(root) {
+    if (root == null) {
+        root = app.activeDocument;
+    }
+    var number = 0;
+    for (var layerIndex = 0; layerIndex < root.layers.length; layerIndex++) {
+        var layer = root.layers[layerIndex];
+        number++;
+        if (layer.layers != null) {
+            number += getTotalNumberOfLayers(layer)
+        }
+    }
+    return number;
+}
+
+function echoNumberOfLayers() {
+    app.echoToOE(getTotalNumberOfLayers().toString());
+}
+
 /**
  * Paste the given image to Photopea as a new Image layer.
  * @param base64image base64 string representing an image.
  */
 function pasteImageAsNewLayer(base64image) {
-    const doc = app.activeDocument;
-    // Select a top level non-folder layer so that the image is not pasted in
-    // folder.
-    for (let i = 0; i < doc.layers.length; i++) {
-        const layer = doc.layers[i];
-        if (layer.typename !== "LayerSet") {
-            app.activeDocument.activeLayer = layer;
-            break;
-        }
-    }
-    const layerNumBeforePaste = doc.layers.length;
+    const layerNumBeforePaste = getTotalNumberOfLayers();
     app.open(base64image, null, /* asSmart */ true);
     app.echoToOE(layerNumBeforePaste.toString());
 }
@@ -118,7 +127,7 @@ function pasteImageAsNewDocument(base64image) {
 // Note: we cannot get layer bounds when a selection is active. So the resize and
 // translation are all based on payload calculations.
 function translateIfNewLayerAdded(layerCount, bounds, layerName) {
-    if (app.activeDocument.layers.length === layerCount) {
+    if (getTotalNumberOfLayers() === layerCount) {
         app.echoToOE("fail");
         return;
     }
@@ -140,6 +149,7 @@ function translateIfNewLayerAdded(layerCount, bounds, layerName) {
     );
 
     layer.name = layerName;
+    layer.move(doc.layers[0], ElementPlacement.PLACEBEFORE);
     app.echoToOE("success");
 }
 
@@ -174,20 +184,16 @@ function deselect() {
 
 // Creates a black and white mask based on the current selection in the active document.
 function exportMaskFromSelection(format) {
-    // Note: app.activeDocument.selection seems always exists. Checking bounds
-    // to see if the selection is actually there.
-    if (!hasSelection()) {
-        alert("No selection!");
-        app.echoToOE("error");
-        return;
-    }
-
     // Create a temp layer.
     const newLayer = app.activeDocument.artLayers.add();
     newLayer.name = "TempMaskLayer";
 
     // Fill the inverse of the selection with black.
-    app.activeDocument.selection.invert();
+    if (hasSelection()) {
+        app.activeDocument.selection.invert();
+    } else {
+        app.activeDocument.selection.selectAll();
+    }
     color = new SolidColor();
     color.rgb.red = 0;
     color.rgb.green = 0;
@@ -198,8 +204,12 @@ function exportMaskFromSelection(format) {
     color.rgb.red = 255;
     color.rgb.green = 255;
     color.rgb.blue = 255;
-    app.activeDocument.selection.invert();
-    app.activeDocument.selection.fill(color);
+    if (hasSelection()) {
+        app.activeDocument.selection.invert();
+        app.activeDocument.selection.fill(color);
+    } else {
+        app.activeDocument.selection.selectAll();
+    }
 
     // Export the mask.
     exportSelectedLayerOnly(format);
@@ -223,13 +233,26 @@ function getSelectionBound() {
     // Note: app.activeDocument.selection seems always exists. Checking bounds
     // to see if the selection is actually there.
     if (!hasSelection()) {
-        alert("No selection!");
-        app.echoToOE("error");
-    } else {
-        const bounds = app.activeDocument.selection.bounds;
-        app.echoToOE(boundsToString(bounds));
+        app.echoToOE(null);
+        return;
     }
+    const bounds = app.activeDocument.selection.bounds;
+    app.echoToOE(boundsToString(bounds));
 }
+
+// function getGenerationBounds() {
+//     if (hasSelection()) {
+//         const bounds = app.activeDocument.selection.bounds;
+//         app.echoToOE(boundsToString(bounds));
+//         return;
+//     }
+
+//     app.echoToOE(JSON.stringify([
+//         0, 0,
+//         app.activeDocument.width,
+//         app.activeDocument.height
+//     ]));
+// }
 
 /**
  * Export current selection to controlnet for preprocessing.
@@ -354,15 +377,24 @@ function selectBound(bound) {
 
 function createRefRangePlaceholder(bound, layerName) {
     if (!hasSelection()) {
-        alert("No selection!");
-        app.echoToOE("error");
+        app.echoToOE("no-selection");
         return;
     }
-    // Save the current active layer
+    // Save the current active layer and selection
     var originalActiveLayer = app.activeDocument.activeLayer;
+    var selectionBounds = app.activeDocument.selection.bounds;
 
-    // Create a temp layer.
-    const newLayer = app.activeDocument.artLayers.add();
+    var layers = app.activeDocument.artLayers;
+    for (var i = 0; i < layers.length; i++) {
+        var layer = layers[i];
+        if (layer.name !== layerName) {
+            continue;
+        }
+        layer.remove();
+        break;
+    }
+
+    var newLayer = app.activeDocument.artLayers.add();
     newLayer.name = layerName;
     newLayer.opacity = 30;
 
@@ -375,9 +407,10 @@ function createRefRangePlaceholder(bound, layerName) {
     selectBound(bound);
     app.activeDocument.selection.fill(blackColor);
     app.activeDocument.selection.deselect();
-
-    // Restore the original active layer
+    
+    // Restore the original active layer and selection
     app.activeDocument.activeLayer = originalActiveLayer;
+    selectBound(selectionBounds);
 
     app.echoToOE('success');
 }
