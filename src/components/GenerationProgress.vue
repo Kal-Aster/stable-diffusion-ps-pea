@@ -110,7 +110,7 @@ export default {
     flex-direction: column;
     background: rgba(0, 0, 0, 0.5);
     /* Dark semi-transparent background */
-    z-index: 1000;
+    z-index: 9999;
 }
 </style>
 

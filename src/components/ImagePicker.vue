@@ -1,5 +1,7 @@
 <script lang="ts">
 
+import type { Slots } from "@vue/runtime-core";
+
 interface ImageItem {
     imageURL: string;
     name: string;
@@ -20,13 +22,20 @@ export default {
             type: Boolean,
             default: true,
         },
+        actionsOnHover: {
+            type: Boolean,
+            default: false,
+        },
     },
     emits: ['item-clicked'],
     setup(props, { emit }) {
         return {
             onItemClicked(item: ImageItem) {
                 emit('item-clicked', item);
-            },            
+            },
+            hasActionsSlot(slots: Slots) {
+                return "default" in slots
+            }
         };
     },
 };
@@ -35,11 +44,17 @@ export default {
 <template>
     <div class="image-grid">
         <div :class="{ 'grid-item': true }"
-            v-for="(item, index) in $props.images" :key="index" @click="onItemClicked(item)">
-            <div :class="{ 'image-preview': true, 'selected': $props.selectedImages!.includes(item.name) }"
+            v-for="(item, index) in images" :key="index" @click="onItemClicked(item)">
+            <div :class="{ 'image-preview': true, 'selected': selectedImages!.includes(item.name) }"
                 :style="`background-image: url(${item.imageURL});`"></div>
-            <div class="actions" :hidden="!displayNames">
-                <span class="name">{{ item.name }}</span>
+            <div
+                :class="{
+                    'actions': true,
+                    'display-on-hover': actionsOnHover
+                }"
+                :hidden="!displayNames && !hasActionsSlot($slots)">
+                <span class="name" v-if="displayNames">{{ item.name }}</span>
+                <slot :image="item"></slot>
             </div>
         </div>
     </div>
@@ -78,6 +93,10 @@ export default {
     box-shadow: rgb(238, 238, 238) 0px 0px 0px 1px;
 }
 
+.grid-item:not(:hover) .display-on-hover {
+    display: none;
+}
+
 .grid-item .image-preview {
     background: url(image_alt.png) no-repeat center/contain;
     /* Firefox */
@@ -94,7 +113,7 @@ export default {
     left: 0;
     right: 0;
     padding: 0.5em;
-    background: rgba(0, 0, 0, 0.5);
+    background: linear-gradient(180deg, rgba(0, 0, 0, 0.5), rgba(0, 0, 0, 0.8));
     box-shadow: 0 0 0.25em 0.25em rgba(0, 0, 0, 0.5);
     text-shadow: 0 0 0.2em black;
 }
@@ -109,8 +128,6 @@ export default {
     overflow: hidden;
     display: block;
     text-overflow: ellipsis;
-    text-shadow: rgba(0, 0, 0, 0.9) 0px 1px 1px;
-    background: linear-gradient(0deg, rgba(0, 0, 0, 0.8), transparent);
     white-space: nowrap;
 }
 

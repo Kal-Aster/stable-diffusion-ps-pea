@@ -1,9 +1,13 @@
 <script lang="ts">
 import { photopeaContext, type PhotopeaBound, boundWidth, boundHeight } from '@/Photopea';
-import { computed, reactive, onMounted, ref, watch } from 'vue';
+import {
+    computed, reactive,
+    ref, watch,
+    onMounted, onBeforeUpdate,
+} from 'vue';
 import ImagePicker from './ImagePicker.vue';
 import DiceOutlined from './svg/DiceOutlined.vue';
-import { CloseOutlined, CheckOutlined, RedoOutlined } from '@ant-design/icons-vue';
+import { CloseOutlined, CheckOutlined, RedoOutlined, DeleteOutlined, ArrowLeftOutlined } from '@ant-design/icons-vue';
 import { getImageDimensions, resizeImage } from '@/ImageUtil';
 import { type IGeneratedImage } from '@/Automatic1111';
 import { ImageResultDestination } from '@/Core';
@@ -32,6 +36,10 @@ export default {
             type: Number, // ImageResultDestination
             required: true,
         },
+        opened: {
+            type: Boolean,
+            default: false,
+        },
     },
     components: {
         ImagePicker,
@@ -40,7 +48,12 @@ export default {
         RedoOutlined,
         DiceOutlined,
     },
-    emits: ['result-finalized', 'generate-more', 'generate-more-variants'],
+    emits: [
+        'result-finalized',
+        'generate-more',
+        'generate-more-variants',
+        'update:opened'
+    ],
     setup(props, { emit }) {
         const resultImageItems = computed(() => {
             return props.images.map((image, index) => {
@@ -61,7 +74,10 @@ export default {
             if (photopeaInProgress.value) return;
 
             let imageIndex = selectedResultImages.indexOf(imageItem);
-            if (imageIndex >= 0 && ctrlPressed.value) {
+            if (imageIndex >= 0) {
+                if (!ctrlPressed.value) {
+                    return;
+                }
                 selectedResultImages.splice(imageIndex, 1);
                 photopeaInProgress.value = true;
                 await photopeaContext.executeTask(async () => {
@@ -141,6 +157,9 @@ export default {
         }
 
         async function discardResultImages() {
+            if (props.opened) {
+                emit('update:opened', false);
+            }
             if (photopeaInProgress.value) return;
             photopeaInProgress.value = true;
             await photopeaContext.executeTask(async () => {
@@ -177,26 +196,52 @@ export default {
         });
 
         watch(props.images, async (newValue, oldValue) => {
-            if (newValue.length > 0) {
-                const imageItem = resultImageItems.value[resultImageItems.value.length - 1];
-                if (selectedResultImages.length === 0) {
-                    // First generation.
-                    await photopeaContext.executeTask(async () => {
-                        if (props.resultDestination == ImageResultDestination.kCurrentCanvas) {
-                            await selectResultImage(imageItem);
-                        } else { // ImageResultDestination.kNewCanvas
-                            await photopeaContext.invoke('pasteImageAsNewDocument', imageItem.imageURL);
-                        }
-                        selectedResultImages.push(imageItem);
-                    });
-                } else {
-                    // Generate more.
-                    await switchResultImage(imageItem);
-                }
+            if (newValue.length === 0) {
+                discardResultImages();
+                return;
+            }
+            const imageItem = resultImageItems.value[resultImageItems.value.length - 1];
+            if (selectedResultImages.length === 0) {
+                // First generation.
+                await photopeaContext.executeTask(async () => {
+                    if (props.resultDestination == ImageResultDestination.kCurrentCanvas) {
+                        await selectResultImage(imageItem);
+                    } else { // ImageResultDestination.kNewCanvas
+                        await photopeaContext.invoke('pasteImageAsNewDocument', imageItem.imageURL);
+                    }
+                    selectedResultImages.push(imageItem);
+                });
+            } else {
+                // Generate more.
+                await switchResultImage(imageItem);
             }
         });
 
+        function getDrawerWidth() {
+            return Math.max(
+                (window.innerWidth - 300) * 0.9,
+                window.innerWidth - 30
+            );
+        }
+        const drawerWidth = ref<number>(getDrawerWidth());
+        onBeforeUpdate(() => {
+            drawerWidth.value = getDrawerWidth();
+        });
+        const onUpdateVisible = (visible: boolean) => {
+            emit('update:opened', visible)
+        }
+
+        const onGenerateMoreVariants = (event: Event, image: IGeneratedImage) => {
+            event.stopPropagation();
+            emit('generate-more-variants', image);
+        };
+
         return {
+            drawerWidth,
+            onUpdateVisible,
+
+            onGenerateMoreVariants,
+
             resultImageItems,
             selectedResultImageNames,
             photopeaInProgress,
@@ -212,29 +257,51 @@ export default {
 </script>
 
 <template>
-    <a-spin :spinning="photopeaInProgress">
-        <ImagePicker :images="resultImageItems" :selectedImages="selectedResultImageNames" @item-clicked="switchResultImage"
-            :displayNames="false"></ImagePicker>
-    </a-spin>
-    <a-row v-if="resultImageItems.length > 0">
-        <a-button class="button" @click="generateMoreVariants" :title="$t('gen.generateMoreVariants')">
-            <DiceOutlined></DiceOutlined>
-        </a-button>
-        <a-button class="button" @click="generateMoreImages" :title="$t('gen.generateMore')">
-            <RedoOutlined></RedoOutlined>
-        </a-button>
-        <a-button :danger="true" class="button" @click="discardResultImages">
-            <CloseOutlined></CloseOutlined>
-        </a-button>
-        <a-button class="button" @click="pickSelectedResultImages">
-            <CheckOutlined></CheckOutlined>
-        </a-button>
-    </a-row>
+    <a-drawer v-bind:visible="opened"
+        @update:visible="onUpdateVisible"
+        placement="right" v-model:width="drawerWidth"
+        title="Generated images">
+        <template #closeIcon>
+            <ArrowLeftOutlined />
+        </template>
+        <a-empty description="No generated images"
+            v-if="resultImageItems.length === 0"></a-empty>
+        <a-spin :spinning="photopeaInProgress">
+            <ImagePicker :images="resultImageItems" :selectedImages="selectedResultImageNames" @item-clicked="switchResultImage"
+                :actionsOnHover="true" :displayNames="false"
+                v-slot="{ image }">
+                <div>
+                    <a-button size="small"
+                        @click="(event: Event) => { onGenerateMoreVariants(event, image); }"
+                    >
+                        <template #icon>
+                            <DiceOutlined />
+                        </template>
+                    </a-button>
+                </div>
+            </ImagePicker>
+        </a-spin>
+        <template #footer>
+            <div style="display: flex; gap: 8px;">
+                <a-button @click="discardResultImages" danger>
+                    <template #icon>
+                        <DeleteOutlined />
+                    </template>
+                </a-button>
+                <div style="flex-grow: 1;"></div>
+                <a-button @click="generateMoreImages"
+                    :title="$t('gen.generateMore')">
+                    <template #icon>
+                        <RedoOutlined />
+                    </template>
+                </a-button>
+                <a-button @click="pickSelectedResultImages"
+                    :disabled="selectedResultImageNames.length === 0"
+                    title="Add selected images to canvas">
+                    Add to canvas
+                </a-button>
+            </div>
+        </template>
+    </a-drawer>
 </template>
-
-<style scoped>
-button {
-    width: 25%;
-}
-</style>
 

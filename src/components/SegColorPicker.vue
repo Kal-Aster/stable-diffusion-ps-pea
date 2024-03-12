@@ -50,6 +50,12 @@ export default {
     components: {
         BgColorsOutlined,
     },
+    props: {
+        disabled: {
+            type: Boolean,
+            default: false
+        },
+    },
     setup(props) {
         const visible = ref<boolean>(false);
         const showDrawer = () => {
@@ -96,7 +102,7 @@ export default {
 </script>
 
 <template>
-    <a-button type="primary" @click="showDrawer" :title="$t('gen.segColorPicker')">
+    <a-button type="primary" @click="showDrawer" :title="$t('gen.segColorPicker')" :disabled="disabled">
         <BgColorsOutlined />
     </a-button>
     <a-drawer v-model:visible="visible" title="Segmentation Color Picker" placement="right">

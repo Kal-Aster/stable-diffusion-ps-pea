@@ -19,15 +19,17 @@ import GenerationResultPicker from '@/components/GenerationResultPicker.vue';
 import { getCurrentInstance } from 'vue';
 import _ from 'lodash';
 import { ApplicationState, ImageResultDestination, ReferenceRangeMode } from '@/Core';
-import { ReloadOutlined } from '@ant-design/icons-vue';
 import { useHistoryStore } from '@/stores/historyStore';
 import { useAppStateStore } from '@/stores/appStateStore';
 import { cloneNoBlob } from '@/Utils';
 import { DEFAULT_CONFIG, applyStateDiff, appStateToStateDiff, type StateDiff } from '@/Config';
 import { useConfigStore } from '@/stores/configStore';
-import { CloseOutlined } from '@ant-design/icons-vue';
 import { UltimateUpscaleScript } from '@/UltimateUpscale';
-import { MoreOutlined, CaretUpOutlined } from '@ant-design/icons-vue';
+import {
+  MoreOutlined,
+  CaretUpOutlined,
+  CloseOutlined,
+} from '@ant-design/icons-vue';
 
 const context = useA1111ContextStore().a1111Context;
 const appStateStore = useAppStateStore();
@@ -346,6 +348,7 @@ async function sendPayload() {
       })
     );
     generationState.value = GenerationState.kFinishedState;
+    generatedImagesDrawerOpened.value = true;
   } catch (e) {
     console.error(e);
     $notify(`${e}`);
@@ -378,6 +381,7 @@ function resetPayload() {
 
 // Reset generation state to kInitial. Abandon current intermediant values.
 function resetGenerationState() {
+  resultImages.length = 0;
   resetPayload();
   generationConfig.value = null;
   generationState.value = GenerationState.kInitialState;
@@ -451,12 +455,20 @@ const stepProgress = computed(() => {
   }
 });
 
-const nextStepTextVisible = ref<boolean>(true);
+const generatedImagesDrawerOpened = ref<boolean>(false);
+const showGeneratedImagesDrawer = () => {
+  generatedImagesDrawerOpened.value = true;
+}
 
 </script>
 <template>
   <div>
     <GenerationProgress v-model:active="generationActive"></GenerationProgress>
+    <GenerationResultPicker :images="resultImages" :bound="resultImageBound" :maskBlur="resultImageMaskBlur"
+      :result-destination="appState.imageResultDestination" @result-finalized="onResultImagePicked"
+      @generate-more="generateMore" @generate-more-variants="generateMoreVariants"
+      v-model:opened="generatedImagesDrawerOpened">
+    </GenerationResultPicker>
 
     <a-space direction="vertical" class="root">
       <SDModelSelection :models="context.sdModels" :activeModelName="context.options.sd_model_checkpoint"
@@ -465,13 +477,14 @@ const nextStepTextVisible = ref<boolean>(true);
 
       <a-space>
         <PayloadRadio :value="appState.generationMode" @update:value="mode => appState.generationMode = mode"
-          :enum-type="GenerationMode">
+          :enum-type="GenerationMode" :disabled="generationState >= GenerationState.kSelectRefAreaState">
         </PayloadRadio>
       </a-space>
 
       <a-form :model="appState.commonPayload" class="payload" :labelWrap="true" layout="vertical" size="small">
         <a-form-item>
-          <PromptInput v-model:payload="appState.commonPayload"></PromptInput>
+          <PromptInput v-model:payload="appState.commonPayload"
+            :disabled="generationState >= GenerationState.kPayloadPreparedState"></PromptInput>
         </a-form-item>
         <a-form-item>
           <div style="text-align: right;">
@@ -480,10 +493,7 @@ const nextStepTextVisible = ref<boolean>(true);
             </a-button>
           </div>
         </a-form-item>
-        <GenerationResultPicker :images="resultImages" :bound="resultImageBound" :maskBlur="resultImageMaskBlur"
-          :result-destination="appState.imageResultDestination" @result-finalized="onResultImagePicked"
-          @generate-more="generateMore" @generate-more-variants="generateMoreVariants">
-        </GenerationResultPicker>
+        
         <a-form-item>
           <SliderGroup :label="$t('gen.scaleRatio')" v-model:value="appState.imageScale" :min="1" :max="16"
             :log-scale="true">
@@ -571,73 +581,61 @@ const nextStepTextVisible = ref<boolean>(true);
     <div class="generation-controls">
       <a-space direction="vertical" style="width: 100%;">
         <div class="generation-controls-first-steps">
-          <a-dropdown placement="topRight">
+          <a-dropdown placement="topRight" :disabled="appState.generationMode === GenerationMode.Txt2Img || generationState >= GenerationState.kPayloadPreparedState">
             <a-button class="area-selector">
               <CaretUpOutlined />Area
             </a-button>
             <template #overlay>
               <a-menu>
                 <a-menu-item @click="selectRefArea"
-                  :disabled="generationState >= GenerationState.kPayloadPreparedState || appState.generationMode === GenerationMode.Txt2Img">
-                  <a-tooltip placement="topLeft" :mouseLeaveDelay="0"
-                    :arrowPointAtCenter="true" class="tooltip-force-block"
-                    :title="$t(`gen.steps.TokSelectRefAreaState`)">{{
-                      $t('gen.selectRefArea')
-                    }}
-                  </a-tooltip>
+                  :title="$t(`gen.steps.TokSelectRefAreaState`)">{{
+                    $t('gen.selectRefArea')
+                  }}
                 </a-menu-item>
               </a-menu>
             </template>
           </a-dropdown>
           <a-spin :spinning="preparePayloadInProgress">
-            <a-tooltip placement="topLeft" :mouseLeaveDelay="0"
-              class="tooltip-force-block tooltip-force-flex-grow"
-              :title="$t(`gen.steps.TokPayloadPreparedState`)">
             <a-button class="prepare-button" :disabled="generationState >= GenerationState.kPayloadPreparedState"
-              @click="preparePayload" block style="flex-grow: 1;">{{
-                $t('gen.prepare')
-              }}</a-button>
-            </a-tooltip>
+              @click="preparePayload" block style="flex-grow: 1;"
+              :title="$t(`gen.steps.TokPayloadPreparedState`)">{{
+              $t('gen.prepare')
+            }}</a-button>
           </a-spin>
         </div>
 
         <div class="generate">
-          <a-dropdown placement="topRight">
+          <a-dropdown placement="topRight" :disabled="generationState >= GenerationState.kPayloadPreparedState">
             <a-button class="generate-1stchild">
               <template #icon>
                 <MoreOutlined />
               </template>
             </a-button>
             <template #overlay>
-              <a-menu  @click="({ key }) => { generateWithConfig(key); }">
+              <a-menu  @click="({ key }: Record<string, string>) => { generateWithConfig(key); }">
                 <a-menu-item :key="configName"
-                  :disabled="generationState >= GenerationState.kPayloadPreparedState"
                   v-for="configName in configStore.toolboxConfigNames">
                   {{ configName }}
                 </a-menu-item>
               </a-menu>
             </template>
           </a-dropdown>
-          <a-tooltip placement="topLeft" :mouseLeaveDelay="0"
-            class="tooltip-force-block tooltip-force-flex-grow"
-            :title="$t(`gen.steps.TokFinishedState`)">
-            <a-button type="primary" @click="generate" class="generate-2ndchild"
-              :disabled="generationState >= GenerationState.kFinishedState" block
-              >{{
-              $t('generate')
-            }}</a-button>
-          </a-tooltip>
-          <a-tooltip placement="topLeft" :mouseLeaveDelay="0"
-            :arrowPointAtCenter="true" class="tooltip-force-block"
-            title="Cancel">
-            <a-button type="danger" :ghost="true" class="generate-3rdchild"
-              :disabled="!(generationState > GenerationState.kSelectRefAreaState && generationState < GenerationState.kFinishedState)"
-              @click="resetGenerationState">
-              <template #icon>
-                <CloseOutlined />
-              </template>
-            </a-button>
-          </a-tooltip>
+          <a-button type="primary" @click="generate" class="generate-2ndchild"
+            v-if="generationState < GenerationState.kFinishedState" block
+            :title="$t(`gen.steps.TokFinishedState`)">{{
+            $t('generate')
+          }}</a-button>
+          <a-button type="primary" @click="showGeneratedImagesDrawer" class="generate-2ndchild"
+            v-else block title="Open generated images">
+            Generated images
+          </a-button>
+          <a-button type="danger" :ghost="true" class="generate-3rdchild"
+            :disabled="generationState <= GenerationState.kSelectRefAreaState"
+            @click="resetGenerationState" title="Cancel">
+            <template #icon>
+              <CloseOutlined />
+            </template>
+          </a-button>
         </div>
       </a-space>
     </div>

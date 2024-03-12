@@ -28,6 +28,10 @@ export default {
             type: Array<[string, IEmbedding]>,
             required: true,
         },
+        disabled: {
+            type: Boolean,
+            default: false
+        },
     },
     components: {
         ImagePicker,
@@ -86,7 +90,7 @@ export default {
 </script>
 
 <template>
-    <a-button type="primary" @click="showDrawer" :title="$t('gen.extraNetworks')">
+    <a-button type="primary" @click="showDrawer" :title="$t('gen.extraNetworks')" :disabled="disabled">
         <DeploymentUnitOutlined />
     </a-button>
 

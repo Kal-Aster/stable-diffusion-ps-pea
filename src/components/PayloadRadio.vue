@@ -14,6 +14,10 @@ export default {
             type: String,
             required: false,
         },
+        disabled: {
+            type: Boolean,
+            default: false,
+        },
     },
     emits: ['update:value'],
     setup(props, { emit }) {
@@ -30,7 +34,7 @@ export default {
 <template>
     <a-space direction="vertical">
         <a-tag style="border: none;" v-if="!!$props.label" class="label">{{ $props.label }}</a-tag>
-        <a-radio-group :value="$props.value" @change="onRadioChange" size="small">
+        <a-radio-group :value="$props.value" @change="onRadioChange" size="small" :disabled="disabled">
             <a-radio-button v-for="key in Object.values($props.enumType).filter(value => isNaN(Number(value)))" :key="key"
                 :value="$props.enumType[key]">
                 {{ key }}

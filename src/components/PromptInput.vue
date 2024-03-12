@@ -16,6 +16,10 @@ export default {
             type: CommonPayload,
             required: true,
         },
+        disabled: {
+            type: Boolean,
+            default: false
+        },
     },
     components: {
         ExtraNetworks,
@@ -157,7 +161,7 @@ export default {
     <a-space direction="vertical" class="input-container">
         <a-spin :spinning="tagStore.loading">
             <a-auto-complete v-model:value="payload.prompt" :options="autoCompleteOptions" @search="handleSearch"
-                @select="handleSelect" class="prompt-container">
+                @select="handleSelect" class="prompt-container" :disabled="disabled">
                 <template #option="{ value, tag }">
                     <div style="display: flex; justify-content: space-between;">
                         <span>{{ value === tag.name ? value : `${value} → ${tag.name}` }}</span>
@@ -172,20 +176,22 @@ export default {
         <a-collapse :bordered="false">
           <a-collapse-panel header="Negative prompt">
             <a-textarea v-model:value="payload.negative_prompt" :placeholder="$t('gen.enterNegativePrompt') + '...'"
-                :autoSize="{ minRows: 1 }" />
+                :autoSize="{ minRows: 1 }" :disabled="disabled" />
             </a-collapse-panel>
         </a-collapse>
         <a-row>
             <a-col flex="auto">
                 <a-space>
-                    <ExtraNetworks :loras="loras" :embeddings="embeddings" @add:prompt="addPrompt"></ExtraNetworks>
+                    <ExtraNetworks :loras="loras" :embeddings="embeddings" @add:prompt="addPrompt" :disabled="disabled"></ExtraNetworks>
                     <Tagger @update:prompt="newPrompt => $props.payload.prompt = newPrompt"
-                        @append:prompt="newPrompt => $props.payload.prompt += newPrompt"></Tagger>
-                    <SegColorPicker></SegColorPicker>
+                        @append:prompt="newPrompt => $props.payload.prompt += newPrompt" :disabled="disabled"></Tagger>
+                    <SegColorPicker :disabled="disabled"></SegColorPicker>
                 </a-space>
             </a-col>
 
-            <a-button @click="clearPrompt" :danger="true" type="primary" :title="$t('gen.clearPrompt')">
+            <a-button @click="clearPrompt" :danger="true"
+                type="primary" :title="$t('gen.clearPrompt')"
+                :disabled="disabled">
                 <DeleteOutlined></DeleteOutlined>
             </a-button>
         </a-row>

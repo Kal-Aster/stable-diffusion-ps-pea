@@ -12,6 +12,12 @@ export default {
         UploadOutlined,
         SliderGroup,
     },
+    props: {
+        disabled: {
+            type: Boolean,
+            default: false
+        },
+    },
     emits: ['update:prompt', 'append:prompt'],
     setup(props, { emit }) {
         const visible = ref<boolean>(false);
@@ -112,7 +118,7 @@ export default {
 </script>
 
 <template>
-    <a-button type="primary" @click="showDrawer" :title="$t('gen.tagger')" :disabled="!context.initialized">
+    <a-button type="primary" @click="showDrawer" :title="$t('gen.tagger')" :disabled="disabled || !context.initialized">
         <TagsOutlined />
     </a-button>
 
